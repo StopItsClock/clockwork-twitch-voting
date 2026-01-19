@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twitch Plays - Vote Now!</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e1e1e 0%, #2d1b3d 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #9147ff;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+            text-shadow: 0 0 20px rgba(145, 71, 255, 0.5);
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #a0a0a0;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: rgba(61, 61, 61, 0.6);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #9147ff;
+            text-align: center;
+        }
+        
+        .stat-label {
+            color: #a0a0a0;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            color: #00ff00;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        
+        .commands-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .command-card {
+            background: rgba(45, 45, 45, 0.8);
+            border: 2px solid #3d3d3d;
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .command-card:hover:not(.disabled) {
+            transform: translateY(-5px);
+            border-color: #9147ff;
+            box-shadow: 0 5px 20px rgba(145, 71, 255, 0.4);
+        }
+        
+        .command-card.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .command-card.voted {
+            border-color: #00ff00;
+            background: rgba(0, 255, 0, 0.1);
+        }
+        
+        .command-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #9147ff;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        
+        .command-type {
+            color: #a0a0a0;
+            font-size: 0.85em;
+            margin-bottom: 15px;
+        }
+        
+        .vote-progress {
+            margin-bottom: 10px;
+        }
+        
+        .progress-bar {
+            background: #2d2d2d;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 5px;
+        }
+        
+        .progress-fill {
+            background: linear-gradient(90deg, #9147ff, #00ff00);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        
+        .vote-count {
+            font-size: 0.9em;
+            color: #e0e0e0;
+        }
+        
+        .cooldown-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2em;
+            color: #ff4444;
+            font-weight: bold;
+        }
+        
+        .status-message {
+            text-align: center;
+            padding: 20px;
+            background: rgba(145, 71, 255, 0.2);
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #9147ff;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.2em;
+            color: #9147ff;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8em;
+            }
+            
+            .commands-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 TWITCH PLAYS 🎮</h1>
+        <p class="subtitle">Vote for commands by clicking below!</p>
+        
+        <div id="statusMessage" class="status-message">
+            <div class="loading">Connecting to game...</div>
+        </div>
+        
+        <div class="stats" id="stats" style="display: none;">
+            <div class="stat-card">
+                <div class="stat-label">Vote Window</div>
+                <div class="stat-value" id="voteWindow">30s</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Cooldown</div>
+                <div class="stat-value" id="cooldown">3s</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Min Votes Needed</div>
+                <div class="stat-value" id="minVotes">5</div>
+            </div>
+        </div>
+        
+        <div id="commandsGrid" class="commands-grid"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getDatabase, ref, onValue, set, get } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
+        // Firebase configuration
+        const firebaseConfig = {
+            databaseURL: 'https://twitch-chat-game-controller-default-rtdb.europe-west1.firebasedatabase.app/'
+        };
+
+        // Initialize Firebase
+        let app, database;
+        try {
+            app = initializeApp(firebaseConfig);
+            database = getDatabase(app);
+            console.log('Firebase initialized successfully');
+        } catch (error) {
+            console.error('Firebase initialization error:', error);
+            document.getElementById('statusMessage').innerHTML = '<div class="loading">Error connecting to Firebase. Check console for details.</div>';
+        }
+
+        // Get or create voter ID
+        let voterId = localStorage.getItem('twitchPlaysVoterId');
+        if (!voterId) {
+            voterId = 'voter_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+            localStorage.setItem('twitchPlaysVoterId', voterId);
+        }
+
+        let commands = {};
+        let currentVotes = {};
+        let cooldowns = {};
+        let settings = {};
+        let myVotes = JSON.parse(localStorage.getItem('myCurrentVotes') || '{}');
+
+        // Listen for commands
+        onValue(ref(database, 'commands'), (snapshot) => {
+            commands = snapshot.val() || {};
+            console.log('Commands updated:', Object.keys(commands).length, 'commands');
+            updateUI();
+        });
+
+        // Listen for current vote counts
+        onValue(ref(database, 'current_votes'), (snapshot) => {
+            currentVotes = snapshot.val() || {};
+            console.log('Current votes updated:', currentVotes);
+            updateUI();
+        });
+
+        // Listen for cooldowns
+        onValue(ref(database, 'cooldowns'), (snapshot) => {
+            cooldowns = snapshot.val() || {};
+            console.log('Cooldowns updated:', cooldowns);
+            updateUI();
+        });
+
+        // Listen for settings
+        onValue(ref(database, 'settings'), (snapshot) => {
+            settings = snapshot.val() || {};
+            console.log('Settings updated:', settings);
+            document.getElementById('voteWindow').textContent = (settings.vote_window || 30) + 's';
+            document.getElementById('cooldown').textContent = (settings.cooldown || 3) + 's';
+            const minVotes = Math.max(1, Math.floor((settings.viewer_count || 100) * (settings.min_percent || 5) / 100));
+            document.getElementById('minVotes').textContent = minVotes;
+            document.getElementById('stats').style.display = 'grid';
+            updateUI();
+        });
+
+        function vote(commandName) {
+            const cmd = commands[commandName];
+            if (!cmd) {
+                console.log('Command not found:', commandName);
+                return;
+            }
+
+            // Check if on cooldown
+            if (cooldowns[commandName]) {
+                console.log('Command on cooldown:', commandName);
+                return;
+            }
+
+            // Check if already voted
+            if (myVotes[commandName]) {
+                console.log('Already voted for:', commandName);
+                return;
+            }
+
+            // Record vote
+            console.log('Recording vote for:', commandName);
+            set(ref(database, `webpage_votes/${voterId}`), {
+                command: commandName,
+                timestamp: Date.now()
+            }).then(() => {
+                console.log('Vote recorded successfully');
+            }).catch((error) => {
+                console.error('Error recording vote:', error);
+            });
+
+            // Track locally
+            myVotes[commandName] = true;
+            localStorage.setItem('myCurrentVotes', JSON.stringify(myVotes));
+
+            updateUI();
+        }
+
+        function updateUI() {
+            const grid = document.getElementById('commandsGrid');
+            const statusMessage = document.getElementById('statusMessage');
+
+            if (Object.keys(commands).length === 0) {
+                statusMessage.innerHTML = '<div class="loading">Waiting for commands...</div>';
+                statusMessage.style.display = 'block';
+                grid.innerHTML = '';
+                return;
+            }
+
+            statusMessage.style.display = 'none';
+
+            grid.innerHTML = '';
+
+            // Clean up old votes that are no longer active
+            const activeCommands = new Set(Object.keys(currentVotes));
+            for (const cmd in myVotes) {
+                if (!activeCommands.has(cmd) && !cooldowns[cmd]) {
+                    delete myVotes[cmd];
+                }
+            }
+            localStorage.setItem('myCurrentVotes', JSON.stringify(myVotes));
+
+            // Sort commands alphabetically
+            const sortedCommands = Object.keys(commands).sort();
+
+            sortedCommands.forEach(cmdName => {
+                const cmd = commands[cmdName];
+                const voteData = currentVotes[cmdName] || {};
+                const cooldownTime = cooldowns[cmdName] || 0;
+                const hasVoted = myVotes[cmdName];
+
+                const card = document.createElement('div');
+                card.className = 'command-card';
+
+                if (cooldownTime > 0) {
+                    card.classList.add('disabled');
+                }
+
+                if (hasVoted) {
+                    card.classList.add('voted');
+                }
+
+                const votes = voteData.votes || 0;
+                const minVotes = voteData.min_votes || Math.max(1, Math.floor((settings.viewer_count || 100) * (settings.min_percent || 5) / 100));
+                const progress = Math.min(100, (votes / minVotes) * 100);
+
+                card.innerHTML = `
+                    <div class="command-name">${cmd.name}</div>
+                    <div class="command-type">${cmd.display}</div>
+                    <div class="vote-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${progress}%"></div>
+                        </div>
+                        <div class="vote-count">${votes} / ${minVotes} votes</div>
+                    </div>
+                `;
+
+                if (cooldownTime > 0) {
+                    const overlay = document.createElement('div');
+                    overlay.className = 'cooldown-overlay';
+                    overlay.textContent = cooldownTime + 's';
+                    card.appendChild(overlay);
+                }
+
+                if (!cooldownTime) {
+                    card.onclick = () => vote(cmdName);
+                }
+
+                grid.appendChild(card);
+            });
+        }
+
+        // Initial update
+        updateUI();
+    </script>
+</body>
+</html>
