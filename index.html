@@ -221,14 +221,14 @@
         <div class="twitch-container">
             <div class="twitch-stream">
                 <iframe
-                    src="https://player.twitch.tv/?channel=stopitsclock&parent=stopitsclock.github.io&muted=false"
+                    src="https://player.twitch.tv/?channel=stopitsclock&parent=stopitsclock.github.io.github.io&muted=false"
                     height="400"
                     allowfullscreen>
                 </iframe>
             </div>
             <div class="twitch-chat">
                 <iframe
-                    src="https://www.twitch.tv/embed/stopitsclock/chat?parent=stopitsclock.github.io&darkpopout"
+                    src="https://www.twitch.tv/embed/stopitsclock/chat?parent=stopitsclock.github.io.github.io&darkpopout"
                     height="400">
                 </iframe>
             </div>
@@ -315,7 +315,17 @@
             settings = snapshot.val() || {};
             console.log('Settings updated:', settings);
             document.getElementById('voteWindow').textContent = (settings.vote_window || 30) + 's';
-            document.getElementById('cooldown').textContent = (settings.cooldown || 3) + 's';
+            
+            // Show N/A for global cooldown if in per-command mode
+            const cooldownElement = document.getElementById('cooldown');
+            if (settings.cooldown_mode === 'per_command') {
+                cooldownElement.textContent = 'N/A';
+                cooldownElement.style.color = '#666666';
+            } else {
+                cooldownElement.textContent = (settings.cooldown || 3) + 's';
+                cooldownElement.style.color = '#00ff00';
+            }
+            
             const minVotes = Math.max(1, Math.floor((settings.viewer_count || 100) * (settings.min_percent || 5) / 100));
             document.getElementById('minVotes').textContent = minVotes;
             document.getElementById('stats').style.display = 'grid';
@@ -407,9 +417,15 @@
                 const minVotes = voteData.min_votes || Math.max(1, Math.floor((settings.viewer_count || 100) * (settings.min_percent || 5) / 100));
                 const progress = Math.min(100, (votes / minVotes) * 100);
 
-                // Display only command name (removed the display/type info)
-                card.innerHTML = `
-                    <div class="command-name">${cmd.name}</div>
+                // Build command card HTML
+                let cardHTML = `<div class="command-name">${cmd.name}</div>`;
+                
+                // Show per-command cooldown if in per-command mode
+                if (settings.cooldown_mode === 'per_command' && cmd.cooldown) {
+                    cardHTML += `<div style="font-size: 0.85em; color: #a0a0a0; text-align: center; margin-bottom: 10px;">Cooldown: ${cmd.cooldown}s</div>`;
+                }
+                
+                cardHTML += `
                     <div class="vote-progress">
                         <div class="progress-bar">
                             <div class="progress-fill" style="width: ${progress}%"></div>
@@ -417,6 +433,9 @@
                         <div class="vote-count">${votes} / ${minVotes} votes</div>
                     </div>
                 `;
+
+                // Display only command name (removed the display/type info)
+                card.innerHTML = cardHTML;
 
                 if (cooldownTime > 0) {
                     const overlay = document.createElement('div');
@@ -438,4 +457,3 @@
     </script>
 </body>
 </html>
-
