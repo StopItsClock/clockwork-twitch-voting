@@ -20,7 +20,7 @@
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
         }
         
@@ -37,6 +37,33 @@
             color: #a0a0a0;
             margin-bottom: 30px;
             font-size: 1.1em;
+        }
+        
+        /* Twitch embed container */
+        .twitch-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .twitch-stream {
+            flex: 1;
+            min-width: 400px;
+            max-width: 800px;
+        }
+        
+        .twitch-chat {
+            flex: 0 0 340px;
+            min-width: 340px;
+        }
+        
+        .twitch-stream iframe,
+        .twitch-chat iframe {
+            width: 100%;
+            border-radius: 10px;
+            border: 2px solid #9147ff;
         }
         
         .stats {
@@ -104,14 +131,9 @@
             font-size: 1.3em;
             font-weight: bold;
             color: #9147ff;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-        }
-        
-        .command-type {
-            color: #a0a0a0;
-            font-size: 0.85em;
             margin-bottom: 15px;
+            text-transform: uppercase;
+            text-align: center;
         }
         
         .vote-progress {
@@ -135,6 +157,7 @@
         .vote-count {
             font-size: 0.9em;
             color: #e0e0e0;
+            text-align: center;
         }
         
         .cooldown-overlay {
@@ -176,6 +199,16 @@
             .commands-grid {
                 grid-template-columns: 1fr;
             }
+            
+            .twitch-container {
+                flex-direction: column;
+            }
+            
+            .twitch-stream,
+            .twitch-chat {
+                min-width: 100%;
+                max-width: 100%;
+            }
         }
     </style>
 </head>
@@ -183,6 +216,23 @@
     <div class="container">
         <h1>🎮 TWITCH PLAYS 🎮</h1>
         <p class="subtitle">Vote for commands by clicking below!</p>
+        
+        <!-- Twitch Stream and Chat Embed -->
+        <div class="twitch-container">
+            <div class="twitch-stream">
+                <iframe
+                    src="https://player.twitch.tv/?channel=stopitsclock&parent=stopitsclock.github.io.github.io&muted=false"
+                    height="400"
+                    allowfullscreen>
+                </iframe>
+            </div>
+            <div class="twitch-chat">
+                <iframe
+                    src="https://www.twitch.tv/embed/stopitsclock/chat?parent=stopitsclock.github.io.github.io&darkpopout"
+                    height="400">
+                </iframe>
+            </div>
+        </div>
         
         <div id="statusMessage" class="status-message">
             <div class="loading">Connecting to game...</div>
@@ -210,7 +260,7 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getDatabase, ref, onValue, set, get } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
-        // Firebase configuration
+        // Firebase configuration - REPLACE WITH YOUR FIREBASE URL
         const firebaseConfig = {
             databaseURL: 'https://twitch-chat-game-controller-default-rtdb.europe-west1.firebasedatabase.app/'
         };
@@ -357,9 +407,9 @@
                 const minVotes = voteData.min_votes || Math.max(1, Math.floor((settings.viewer_count || 100) * (settings.min_percent || 5) / 100));
                 const progress = Math.min(100, (votes / minVotes) * 100);
 
+                // Display only command name (removed the display/type info)
                 card.innerHTML = `
                     <div class="command-name">${cmd.name}</div>
-                    <div class="command-type">${cmd.display}</div>
                     <div class="vote-progress">
                         <div class="progress-bar">
                             <div class="progress-fill" style="width: ${progress}%"></div>
