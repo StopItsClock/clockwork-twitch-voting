@@ -214,7 +214,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎮 TWITCH PLAYS 🎮</h1>
+        <h1 id="mainTitle">🎮 TWITCH PLAYS 🎮</h1>
         <p class="subtitle">Vote for commands by clicking below!</p>
         
         <!-- Twitch Stream and Chat Embed -->
@@ -275,6 +275,29 @@
             console.error('Firebase initialization error:', error);
             document.getElementById('statusMessage').innerHTML = '<div class="loading">Error connecting to Firebase. Check console for details.</div>';
         }
+
+        // Fetch current game from Twitch
+        async function updateGameTitle() {
+            try {
+                const channelName = 'stopitsclock';
+                const response = await fetch(`https://decapi.me/twitch/game/${channelName}`);
+                const game = await response.text();
+                
+                const titleElement = document.getElementById('mainTitle');
+                if (game && game.trim() && !game.includes('error') && game !== 'null') {
+                    titleElement.textContent = `🎮 TWITCH PLAYS ${game.toUpperCase()} 🎮`;
+                } else {
+                    titleElement.textContent = '🎮 TWITCH PLAYS 🎮';
+                }
+            } catch (error) {
+                console.error('Error fetching game:', error);
+                document.getElementById('mainTitle').textContent = '🎮 TWITCH PLAYS 🎮';
+            }
+        }
+
+        // Update game title on load and every 5 minutes
+        updateGameTitle();
+        setInterval(updateGameTitle, 5 * 60 * 1000);
 
         // Get or create voter ID
         let voterId = localStorage.getItem('twitchPlaysVoterId');
@@ -457,4 +480,3 @@
     </script>
 </body>
 </html>
-
