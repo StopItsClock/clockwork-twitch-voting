@@ -214,7 +214,7 @@
 </head>
 <body>
     <div class="container">
-        <h1 id="mainTitle">🎮 TWITCH PLAYS 🎮</h1>
+        <h1>🎮 TWITCH PLAYS 🎮</h1>
         <p class="subtitle">Vote for commands by clicking below!</p>
         
         <!-- Twitch Stream and Chat Embed -->
@@ -270,34 +270,9 @@
         try {
             app = initializeApp(firebaseConfig);
             database = getDatabase(app);
-            console.log('Firebase initialized successfully');
         } catch (error) {
-            console.error('Firebase initialization error:', error);
-            document.getElementById('statusMessage').innerHTML = '<div class="loading">Error connecting to Firebase. Check console for details.</div>';
+            document.getElementById('statusMessage').innerHTML = '<div class="loading">Error connecting to Database. Check console for details.</div>';
         }
-
-        // Fetch current game from Twitch
-        async function updateGameTitle() {
-            try {
-                const channelName = 'stopitsclock';
-                const response = await fetch(`https://decapi.me/twitch/game/${channelName}`);
-                const game = await response.text();
-                
-                const titleElement = document.getElementById('mainTitle');
-                if (game && game.trim() && !game.includes('error') && game !== 'null') {
-                    titleElement.textContent = `🎮 TWITCH PLAYS ${game.toUpperCase()} 🎮`;
-                } else {
-                    titleElement.textContent = '🎮 TWITCH PLAYS 🎮';
-                }
-            } catch (error) {
-                console.error('Error fetching game:', error);
-                document.getElementById('mainTitle').textContent = '🎮 TWITCH PLAYS 🎮';
-            }
-        }
-
-        // Update game title on load and every 5 minutes
-        updateGameTitle();
-        setInterval(updateGameTitle, 5 * 60 * 1000);
 
         // Get or create voter ID
         let voterId = localStorage.getItem('twitchPlaysVoterId');
@@ -311,32 +286,41 @@
         let cooldowns = {};
         let settings = {};
         let myVotes = JSON.parse(localStorage.getItem('myCurrentVotes') || '{}');
+        let gracePeriodEnd = 0; // Timestamp when grace period ends
 
         // Listen for commands
         onValue(ref(database, 'commands'), (snapshot) => {
             commands = snapshot.val() || {};
-            console.log('Commands updated:', Object.keys(commands).length, 'commands');
             updateUI();
         });
 
         // Listen for current vote counts
         onValue(ref(database, 'current_votes'), (snapshot) => {
             currentVotes = snapshot.val() || {};
-            console.log('Current votes updated:', currentVotes);
             updateUI();
         });
 
         // Listen for cooldowns
         onValue(ref(database, 'cooldowns'), (snapshot) => {
             cooldowns = snapshot.val() || {};
-            console.log('Cooldowns updated:', cooldowns);
             updateUI();
         });
 
+        // Listen for grace period
+        onValue(ref(database, 'grace_period'), (snapshot) => {
+            const graceData = snapshot.val();
+            
+            if (graceData && graceData.end_time) {
+                gracePeriodEnd = graceData.end_time * 1000; // Convert to milliseconds
+            } else {
+                gracePeriodEnd = 0;
+            }
+            updateUI();
+        });
+        
         // Listen for settings
         onValue(ref(database, 'settings'), (snapshot) => {
             settings = snapshot.val() || {};
-            console.log('Settings updated:', settings);
             document.getElementById('voteWindow').textContent = (settings.vote_window || 30) + 's';
             
             // Show N/A for global cooldown if in per-command mode
@@ -358,29 +342,23 @@
         function vote(commandName) {
             const cmd = commands[commandName];
             if (!cmd) {
-                console.log('Command not found:', commandName);
                 return;
             }
 
             // Check if on cooldown
             if (cooldowns[commandName]) {
-                console.log('Command on cooldown:', commandName);
                 return;
             }
 
             // Check if already voted
             if (myVotes[commandName]) {
-                console.log('Already voted for:', commandName);
                 return;
             }
 
             // Record vote
-            console.log('Recording vote for:', commandName);
             set(ref(database, `webpage_votes/${voterId}`), {
                 command: commandName,
                 timestamp: Date.now()
-            }).then(() => {
-                console.log('Vote recorded successfully');
             }).catch((error) => {
                 console.error('Error recording vote:', error);
             });
@@ -425,10 +403,20 @@
                 const cooldownTime = cooldowns[cmdName] || 0;
                 const hasVoted = myVotes[cmdName];
 
+                // Check if grace period is active
+                const now = Date.now();
+                const graceRemaining = gracePeriodEnd > now ? Math.ceil((gracePeriodEnd - now) / 1000) : 0;
+                const isGracePeriodActive = graceRemaining > 0;
+
                 const card = document.createElement('div');
                 card.className = 'command-card';
+                card.dataset.cmdName = cmdName; // Add data attribute for later updates
 
+                // Disable if on cooldown OR grace period is active (but only disable during grace if command isn't already on cooldown)
                 if (cooldownTime > 0) {
+                    card.classList.add('disabled');
+                } else if (isGracePeriodActive) {
+                    // Only disable and show grace if command is NOT on its own cooldown
                     card.classList.add('disabled');
                 }
 
@@ -460,23 +448,68 @@
                 // Display only command name (removed the display/type info)
                 card.innerHTML = cardHTML;
 
+                // Priority: Show command cooldown if it exists, otherwise show grace if active
                 if (cooldownTime > 0) {
+                    // Command has its own cooldown - show it
                     const overlay = document.createElement('div');
                     overlay.className = 'cooldown-overlay';
+                    overlay.dataset.type = 'cooldown';
                     overlay.textContent = cooldownTime + 's';
+                    card.appendChild(overlay);
+                } else if (isGracePeriodActive) {
+                    // No command cooldown but grace is active - show grace
+                    const overlay = document.createElement('div');
+                    overlay.className = 'cooldown-overlay';
+                    overlay.dataset.type = 'grace';
+                    overlay.textContent = graceRemaining + 's';
                     card.appendChild(overlay);
                 }
 
-                if (!cooldownTime) {
+                // Only allow clicks if no cooldown and no grace period
+                if (!cooldownTime && !isGracePeriodActive) {
                     card.onclick = () => vote(cmdName);
                 }
 
                 grid.appendChild(card);
             });
         }
+        
+        // Function to update only the countdown overlays without rebuilding UI
+        function updateCountdowns() {
+            const now = Date.now();
+            const graceRemaining = gracePeriodEnd > now ? Math.ceil((gracePeriodEnd - now) / 1000) : 0;
+            const isGracePeriodActive = graceRemaining > 0;
+            
+            // Update each card's overlay if it exists
+            document.querySelectorAll('.command-card').forEach(card => {
+                const cmdName = card.dataset.cmdName;
+                const cooldownTime = cooldowns[cmdName] || 0;
+                const overlay = card.querySelector('.cooldown-overlay');
+                
+                if (overlay) {
+                    const overlayType = overlay.dataset.type;
+                    
+                    if (overlayType === 'cooldown' && cooldownTime > 0) {
+                        // Update command cooldown
+                        overlay.textContent = cooldownTime + 's';
+                    } else if (overlayType === 'grace' && isGracePeriodActive) {
+                        // Update grace period
+                        overlay.textContent = graceRemaining + 's';
+                    } else if (cooldownTime === 0 && !isGracePeriodActive) {
+                        // Remove overlay if cooldowns expired
+                        overlay.remove();
+                        card.classList.remove('disabled');
+                        card.onclick = () => vote(cmdName);
+                    }
+                }
+            });
+        }
 
         // Initial update
         updateUI();
+        
+        // Update only countdowns every second (doesn't rebuild UI, prevents flicker)
+        setInterval(updateCountdowns, 1000);
     </script>
 </body>
 </html>
